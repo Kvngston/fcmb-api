@@ -1,0 +1,15 @@
+package com.tk.fcmb.Enums;
+
+public enum ProcessType {
+
+    UPDATE_TRANSACTION_LIMIT,
+    UPGRADE_MOBILE_APP_USER_TYPE,
+    UPDATE_MOIBLE_NUMBER,
+    CONFIRM_OTP_CODE,
+    RESET_MOBILE_USER_PASSWORD,
+    CLEAR_IMEI,
+    BLOCK_USER,
+    UNBLOCK_USER,
+    RESET_PIN
+
+}
