@@ -1,5 +1,6 @@
 package com.tk.fcmb.Entities;
 
+import com.tk.fcmb.Enums.RequestStatus;
 import com.tk.fcmb.Enums.RoleType;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -19,7 +20,7 @@ import java.util.Objects;
 public class Role extends AuditModel{
 
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
 
     private String roleName;
@@ -28,6 +29,12 @@ public class Role extends AuditModel{
 
     @ElementCollection(targetClass = GrantedAuthority.class, fetch = FetchType.EAGER)
     private List<GrantedAuthority> authorities;
+
+    private RequestStatus requestStatus = RequestStatus.PENDING;
+
+    private boolean approved = false;
+
+    private String ticketNumber;
 
 
     @Override

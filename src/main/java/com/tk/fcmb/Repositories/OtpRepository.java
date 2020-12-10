@@ -8,7 +8,7 @@ import java.util.List;
 
 public interface OtpRepository extends JpaRepository<OTP, Long> {
 
-    List<OTP> findAllByUser(User user);
+    List<OTP> findAllByUserAndValid(User user, boolean validity);
     List<OTP> findAllByValid(boolean validity);
     OTP findById(long id);
     OTP findByUserAndValid(User user, boolean valid);

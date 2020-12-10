@@ -1,5 +1,6 @@
 package com.tk.fcmb.Entities.dto;
 
+import com.tk.fcmb.Enums.RoleType;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -16,11 +17,11 @@ public class UserDto {
     @NotNull
     private String lastName;
 
-    @NotNull
-    private String middleName;
-
-    @NotNull
-    private String username;
+//    private String country;
+//
+//    private String stateOfOrigin;
+//
+//    private String lga;
 
     @Email
     @NotNull
@@ -30,10 +31,10 @@ public class UserDto {
     private String phoneNumber;
 
     @NotNull
-    private String password;
+    private String staffId;
 
     @NotNull
-    private String staffId;
+    private String roleName;
 
 
 

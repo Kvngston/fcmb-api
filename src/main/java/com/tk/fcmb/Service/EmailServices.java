@@ -44,4 +44,6 @@ public class EmailServices {
         mailSender.send(message);
         log.info("Email successfully sent to " + Arrays.toString(email));
     }
+
+
 }

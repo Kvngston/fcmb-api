@@ -13,10 +13,7 @@ import javax.validation.constraints.NotNull;
 @AllArgsConstructor
 public class AuthenticationRequest {
 
-    private String username;
+    private String email;
     private String password;
-
-    @NotNull
-    private String otpMode;
 
 }

@@ -8,7 +8,6 @@ import lombok.Setter;
 
 import javax.persistence.*;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 @Entity
@@ -20,7 +19,7 @@ import java.time.LocalTime;
 public class AuditTrail{
 
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private long id;
 
     private String title;
@@ -49,6 +48,17 @@ public class AuditTrail{
         this.updatedAtTime = LocalTime.now();
     }
 
-
-
+    @Override
+    public String toString() {
+        return "AuditTrail{" +
+                "id=" + id +
+                ", title='" + title + '\'' +
+                ", transactionDetails='" + transactionDetails + '\'' +
+                ", ipAddress='" + ipAddress + '\'' +
+                ", createdAtDate=" + createdAtDate +
+                ", createdAtTime=" + createdAtTime +
+                ", updatedAtDate=" + updatedAtDate +
+                ", updatedAtTime=" + updatedAtTime +
+                '}';
+    }
 }

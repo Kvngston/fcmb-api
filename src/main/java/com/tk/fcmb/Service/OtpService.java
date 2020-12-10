@@ -5,8 +5,8 @@ import org.springframework.http.ResponseEntity;
 
 public interface OtpService {
 
-    ResponseEntity<OTP> generateOtp(long userId, String otpSendMode) throws Exception;
-    ResponseEntity<OTP> reGenerateOtp(long userId, String otpSendMode) throws Exception;
+    ResponseEntity<?> generateOtp(String email, String otpSendMode) throws Exception;
+    ResponseEntity<?> reGenerateOtp(String email, String otpSendMode) throws Exception;
     ResponseEntity<?> verifyOtp(long userId, String otp);
 
 }

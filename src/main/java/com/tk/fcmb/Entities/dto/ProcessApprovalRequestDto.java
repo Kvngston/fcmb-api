@@ -20,9 +20,6 @@ import javax.validation.constraints.NotNull;
 @AllArgsConstructor
 public class ProcessApprovalRequestDto {
 
-    @NotNull
-    private String staffId;
-
     private String mobileNumber;
     
     private String oldNumber;
@@ -32,25 +29,17 @@ public class ProcessApprovalRequestDto {
     @NotNull
     private String reasonForInitiation;
 
-    private String oldUserType;
-
-    private String newUserType;
-
     private int userTypeId;
 
-    private long newDailyLimitAmount;
+    private long dailyAmountLimit;
 
-    private long oldDailyLimitAmount;
+    private long transactionLimit;
 
     private String otpType;
 
     private String action;
 
     private String confirmPassword;
-
-    private String newPassword;
-
-    private String oldPassword;
 
     @NotNull
     private ProcessType processType;

@@ -18,13 +18,13 @@ import java.util.Date;
 @Entity
 @Table(name = "sms_log")
 @NamedQueries({
-    @NamedQuery(name = "SmsLog.findAll", query = "SELECT s FROM SmsLog s")
-    , @NamedQuery(name = "SmsLog.findById", query = "SELECT s FROM SmsLog s WHERE s.id = :id")
-    , @NamedQuery(name = "SmsLog.findBySenderMobile", query = "SELECT s FROM SmsLog s WHERE s.senderMobile = :senderMobile")
-    , @NamedQuery(name = "SmsLog.findByDestinationMobile", query = "SELECT s FROM SmsLog s WHERE s.destinationMobile = :destinationMobile")
-    , @NamedQuery(name = "SmsLog.findByResponseCode", query = "SELECT s FROM SmsLog s WHERE s.responseCode = :responseCode")
-    , @NamedQuery(name = "SmsLog.findByMessage", query = "SELECT s FROM SmsLog s WHERE s.message = :message")
-    , @NamedQuery(name = "SmsLog.findByCreatedAt", query = "SELECT s FROM SmsLog s WHERE s.createdAt = :createdAt")})
+        @NamedQuery(name = "SmsLog.findAll", query = "SELECT s FROM SmsLog s")
+        , @NamedQuery(name = "SmsLog.findById", query = "SELECT s FROM SmsLog s WHERE s.id = :id")
+        , @NamedQuery(name = "SmsLog.findBySenderMobile", query = "SELECT s FROM SmsLog s WHERE s.senderMobile = :senderMobile")
+        , @NamedQuery(name = "SmsLog.findByDestinationMobile", query = "SELECT s FROM SmsLog s WHERE s.destinationMobile = :destinationMobile")
+        , @NamedQuery(name = "SmsLog.findByResponseCode", query = "SELECT s FROM SmsLog s WHERE s.responseCode = :responseCode")
+        , @NamedQuery(name = "SmsLog.findByMessage", query = "SELECT s FROM SmsLog s WHERE s.message = :message")
+        , @NamedQuery(name = "SmsLog.findByCreatedAt", query = "SELECT s FROM SmsLog s WHERE s.createdAt = :createdAt")})
 public class SmsLog implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -40,8 +40,8 @@ public class SmsLog implements Serializable {
     @Column(name = "destination_mobile")
     private String destinationMobile;
     @Basic(optional = false)
-    @NotNull
-    @Size(min = 1, max = 5)
+//    @NotNull
+//    @Size(min = 1, max = 5)
     @Column(name = "response_code")
     private String responseCode;
     @Size(max = 255)
@@ -52,6 +52,10 @@ public class SmsLog implements Serializable {
     @Column(name = "created_at")
     @Temporal(TemporalType.TIMESTAMP)
     private Date createdAt;
+
+
+    @Column(name = "user_id")
+    private Long userId;
 
     public SmsLog() {
     }
@@ -114,6 +118,16 @@ public class SmsLog implements Serializable {
         this.createdAt = createdAt;
     }
 
+
+
+    public Long getUserId() {
+        return userId;
+    }
+
+    public void setUserId(Long userId) {
+        this.userId = userId;
+    }
+
     @Override
     public int hashCode() {
         int hash = 0;
@@ -138,5 +152,5 @@ public class SmsLog implements Serializable {
     public String toString() {
         return "com.octacode.fcmbmobileprocessor.models.SmsLog[ id=" + id + " ]";
     }
-    
+
 }

@@ -4,19 +4,17 @@ import com.tk.fcmb.Entities.AuditTrail;
 import com.tk.fcmb.Entities.User;
 import com.tk.fcmb.Entities.dto.AuditTrailDto;
 import com.tk.fcmb.Enums.RoleType;
-import com.tk.fcmb.Job.IpAddressGetter;
 import com.tk.fcmb.Repositories.AuditTrailRepository;
 import com.tk.fcmb.Repositories.UserRepository;
 import com.tk.fcmb.Service.AuditTrailService;
-import com.tk.fcmb.utils.DateUtil;
+import com.tk.fcmb.utils.ConvertToPageable;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.core.parameters.P;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -42,41 +40,59 @@ public class AuditTrailServiceImpl implements AuditTrailService {
     }
 
     @Override
-    public List<AuditTrail> getAllAuditTrails() {
-        return auditTrailRepository.findAll();
+    public Page<?> getAllAuditTrails(int page, int size) {
+        //ConvertToPageable convertToPageable = new ConvertToPageable();
+        Pageable pageable = PageRequest.of(page, size);
+        Page<AuditTrail> auditTrails = auditTrailRepository.findAll(pageable);
+        auditTrails.forEach(auditTrail -> auditTrail.getUser().setPassword(""));
+        return auditTrails;
     }
 
     @Override
-    public List<AuditTrail> getAllAuditTrailsByDate(LocalDate date) {
-
-        return auditTrailRepository.findAllByCreatedAtDate(date);
+    public Page<?> getAllAuditTrailsByDate(LocalDate date, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<AuditTrail> auditTrails = auditTrailRepository.findAllByCreatedAtDate(date,pageable);
+        auditTrails.forEach(auditTrail -> auditTrail.getUser().setPassword(""));
+        return auditTrails;
     }
 
     @Override
-    public List<AuditTrail> getAllByRole(RoleType roleType) {
-        List<AuditTrail> auditTrails = getAllAuditTrails();
+    public Page<?> getAllByRole(RoleType roleType, int page, int size) {
 
-        return auditTrails
+        List<AuditTrail> auditTrails = auditTrailRepository.findAll();
+        ConvertToPageable convertToPageable = new ConvertToPageable(page,size);
+        Page<AuditTrail> auditTrailPage = (Page<AuditTrail>)  convertToPageable.convertListToPage(auditTrails
                 .stream()
-                .filter(auditTrail -> auditTrail.getUser().getRole().getRoleType() == roleType).collect(Collectors.toList());
+                .filter(auditTrail -> auditTrail.getUser().getRole().getRoleType() == roleType)
+                .collect(Collectors.toList()));
 
-
+        auditTrailPage.forEach(auditTrail -> auditTrail.getUser().setPassword(""));
+        return auditTrailPage;
     }
 
     @Override
-    public List<AuditTrail> getAllByStaffId(String staffId) {
+    public Page<?> getAllByStaffId(String staffId, int page, int size) {
+
+        Pageable pageable = PageRequest.of(page, size);
 
         User user = userRepository.findByStaffId(staffId);
 
         if (user == null) {
             return null;
         }
+        Page<AuditTrail> auditTrails = auditTrailRepository.findAllByUser(user,pageable);
 
-        return auditTrailRepository.findAllByUser(user);
+        auditTrails.forEach(auditTrail -> auditTrail.getUser().setPassword(""));
+
+        return auditTrails;
     }
 
     @Override
-    public List<AuditTrail> getAllByIpAddress(String ipAddress) {
-        return auditTrailRepository.findAllByIpAddress(ipAddress);
+    public Page<?> getAllByIpAddress(String ipAddress, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+
+        Page<AuditTrail> auditTrails = auditTrailRepository.findAllByIpAddress(ipAddress,pageable);
+        auditTrails.forEach(auditTrail -> auditTrail.getUser().setPassword(""));
+        return auditTrails;
     }
 }

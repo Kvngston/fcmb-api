@@ -6,7 +6,7 @@ public enum UserPermissions {
     UNBLOCK_USER("unblock_user"),
     UPDATE_TRANSACTION("update_transaction"),
     UPGRADE_MOBILE_APP_USERTYPE("update_mobile_app_usertype"),
-    UPDATE_PHONE_NUMBER("update_phone_number"),
+    UPDATE_MOBILE_NUMBER("update_mobile_number"),
     CONFIRM_OTP("confirm_otp"),
     RESET_MOBILE_USER_PASSWORD("update_mobile_user_password"),
     CLEAR_IMEI("clear_imei"),

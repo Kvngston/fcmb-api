@@ -2,6 +2,8 @@ package com.tk.fcmb.Service.impl;
 
 import com.tk.fcmb.Entities.OTP;
 import com.tk.fcmb.Entities.User;
+import com.tk.fcmb.Entities.dto.Response;
+import com.tk.fcmb.Enums.LoginFlag;
 import com.tk.fcmb.Repositories.OtpRepository;
 import com.tk.fcmb.Repositories.UserRepository;
 import com.tk.fcmb.Service.EmailServices;
@@ -10,6 +12,7 @@ import com.tk.fcmb.restclients.CoreBankClients;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalTime;
@@ -28,18 +31,23 @@ public class OtpServiceImpl implements OtpService {
     private EmailServices emailServices;
 
     @Autowired
+    private BCryptPasswordEncoder passwordEncoder;
+
+    @Autowired
     private CoreBankClients coreBankClients;
 
 
     @Override
-    public ResponseEntity<OTP> generateOtp(long userId, String otpSendMode) throws Exception {
+    public ResponseEntity<?> generateOtp(String email, String otpSendMode) throws Exception {
 
-        if (otpSendMode.contains("mobile")){
+        Response response = new Response();
+
+        if (otpSendMode.equals("sms".toLowerCase())){
 
             OTP otp = new OTP();
-            User user = userRepository.getOne(userId);
+            User user = userRepository.findByEmail(email);
 
-            otpRepository.findAllByUser(userRepository.getOne(userId)).forEach(
+            otpRepository.findAllByUserAndValid(userRepository.findByEmail(email), true).forEach(
                     otp1 -> {
                         otp1.setValid(false);
                         otpRepository.save(otp1);
@@ -47,28 +55,39 @@ public class OtpServiceImpl implements OtpService {
             );
 
             otp.setValid(true);
-            otp.setPhoneNumber(userRepository.getOne(userId).getPhoneNumber());
+            otp.setPhoneNumber(userRepository.findByEmail(email).getPhoneNumber());
 
             otp.setCreatedAt(LocalTime.now());
             otp.setExpiryTime(otp.getCreatedAt().plusMinutes(5));
-            otp.setCode(codeGenerator());
+
+            String generatedOtp = codeGenerator();
+
+            otp.setCode(passwordEncoder.encode(generatedOtp));
 
             otp.setUser(user);
+
+            user.setLoginFlag(LoginFlag.VERIFY_OTP_FLAG);
 
             userRepository.save(user);
             otpRepository.save(otp);
 
             //send the otp to the number
-            coreBankClients.sendSMS(user.getPassword(), "Your One Time Password is "+ otp.getCode(), "09058547992");
 
-            return new ResponseEntity<>(otp, HttpStatus.CREATED);
+            coreBankClients.sendSMS(!user.getPhoneNumber().startsWith("234") ? user.getPhoneNumber().replaceFirst("0", "234") : user.getPhoneNumber(),
+                    "Your One Time Password is "+ generatedOtp, "FCMB BETA",user.getId());
 
-        }else if (otpSendMode.contains("email")){
+//            !user.getPhoneNumber().startsWith("234") ? user.getPhoneNumber().replaceFirst("0", "234") : user.getPhoneNumber()
+            response.setResponseCode(200);
+            response.setResponseMessage("Successful");
+            response.setResponseData(otp);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+
+        }else if (otpSendMode.equals("email".toLowerCase())){
 
             OTP otp = new OTP();
-            User user = userRepository.getOne(userId);
+            User user = userRepository.findByEmail(email);
 
-            otpRepository.findAllByUser(userRepository.getOne(userId)).forEach(
+            otpRepository.findAllByUserAndValid(userRepository.findByEmail(email), true).forEach(
                     otp1 -> {
                         otp1.setValid(false);
                         otpRepository.save(otp1);
@@ -76,45 +95,56 @@ public class OtpServiceImpl implements OtpService {
             );
 
             otp.setValid(true);
-            otp.setEmail(userRepository.getOne(userId).getEmail());
+            otp.setEmail(userRepository.findByEmail(email).getEmail());
 
             otp.setCreatedAt(LocalTime.now());
             otp.setExpiryTime(otp.getCreatedAt().plusMinutes(5));
-            otp.setCode(codeGenerator());
+
+            String generatedOtp = codeGenerator();
+
+            otp.setCode(passwordEncoder.encode(generatedOtp));
 
             otp.setUser(user);
             otpRepository.save(otp);
 
+            user.setLoginFlag(LoginFlag.VERIFY_OTP_FLAG);
 
             userRepository.save(user);
 
-            emailServices.sendMail("One Time Password","Your OTP code is : " + otp.getCode(), user.getEmail());
+            emailServices.sendMail("One Time Password","Your OTP code is : " + generatedOtp, user.getEmail());
 
-            return new ResponseEntity<>(otp, HttpStatus.CREATED);
+
+            response.setResponseCode(200);
+            response.setResponseMessage("Successful");
+            response.setResponseData(otp);
+            return new ResponseEntity<>(response, HttpStatus.OK);
 
         }else {
-            return new ResponseEntity<>(null, HttpStatus.BAD_REQUEST);
+            response.setResponseCode(200);
+            response.setResponseMessage("An Error occurred");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
         }
     }
 
     @Override
-    public ResponseEntity<OTP> reGenerateOtp(long userId, String otpSendMode) throws Exception {
+    public ResponseEntity<?> reGenerateOtp(String email, String otpSendMode) throws Exception {
 
-        otpRepository.findAllByUser(userRepository.getOne(userId)).forEach(
-                otp -> {
-                    otp.setValid(false);
-                    otpRepository.save(otp);
-                }
-        );
-
-        return  generateOtp(userId,otpSendMode);
+        return generateOtp(email,otpSendMode);
     }
 
     @Override
     public ResponseEntity<?> verifyOtp(long userId, String otp) {
-        OTP userOtp = otpRepository.findByUserAndValid(userRepository.getOne(userId),true);
+        OTP userOtp = otpRepository.findByUserAndValid(userRepository.findById(userId),true);
+        Response response = new Response();
+        if (userOtp == null){
+            response.setResponseCode(400);
+            response.setResponseMessage("Otp might has Expired");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
 
-        if (userOtp.getCode().equals(otp)){
+        if (passwordEncoder.matches(otp,userOtp.getCode())){
             if (userOtp.isValid()){
                 return ResponseEntity.accepted().body(true);
             }else

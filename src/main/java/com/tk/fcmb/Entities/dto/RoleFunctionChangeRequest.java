@@ -19,6 +19,4 @@ public class RoleFunctionChangeRequest {
 
     private List<UserPermissions> newFunctions;
 
-    private String staffId;
-
 }

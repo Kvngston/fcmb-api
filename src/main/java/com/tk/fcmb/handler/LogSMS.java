@@ -2,6 +2,8 @@ package com.tk.fcmb.handler;
 
 import com.tk.fcmb.Entities.SmsLog;
 import com.tk.fcmb.Repositories.SmsLogRepository;
+import com.tk.fcmb.utils.AES;
+import io.micrometer.core.instrument.util.StringUtils;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.URLDecoder;
@@ -15,13 +17,15 @@ public class LogSMS implements Runnable {
     private String destinationMobile;
     private String message;
     private String responseCode;
+    private Long userId;
 
-    public LogSMS(SmsLogRepository smsLogRepository, String senderMobile, String destinationMobile, String message, String responseCode) {
+    public LogSMS(SmsLogRepository smsLogRepository, String senderMobile, String destinationMobile, String message, String responseCode,Long userId) {
         this.smsLogRepository = smsLogRepository;
         this.senderMobile = senderMobile;
         this.destinationMobile = destinationMobile;
         this.message = message;
         this.responseCode = responseCode;
+        this.userId = userId;
     }
 
     @Override
@@ -34,10 +38,11 @@ public class LogSMS implements Runnable {
         }
         SmsLog smsLog = new SmsLog();
         smsLog.setDestinationMobile(destinationMobile);
-        smsLog.setMessage(newMessage);
+        smsLog.setMessage(StringUtils.isNotBlank(newMessage) ? AES.encrypt(newMessage) : "");
         smsLog.setResponseCode(responseCode);
         smsLog.setSenderMobile(senderMobile);
         smsLog.setCreatedAt(new Date());
+        smsLog.setUserId(userId);
         try {
             smsLogRepository.save(smsLog);
         } catch (Exception e) {

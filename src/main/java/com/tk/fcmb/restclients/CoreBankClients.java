@@ -3,6 +3,7 @@ package com.tk.fcmb.restclients;
 import com.google.gson.JsonObject;
 import com.tk.fcmb.Repositories.SmsLogRepository;
 import com.tk.fcmb.handler.LogSMS;
+import io.micrometer.core.instrument.util.StringUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpResponse;
@@ -51,6 +52,7 @@ public class CoreBankClients {
     @Autowired
     private SmsLogRepository smsLogRepository;
 
+
 //    public String httpPostClients(String url, String token, JsonObject request) {
 //        long start = System.currentTimeMillis();
 //        log.info("REQUEST " + request);
@@ -64,42 +66,42 @@ public class CoreBankClients {
 //        return responseBody;
 //    }
 
-    public String httpPostClients(String url, String apiKey, JsonObject ob) {
-        long start = System.currentTimeMillis();
-        String result;
-        try {
-            HttpClient client = HttpClientBuilder.create().build();
-
-            HttpPost request = new HttpPost(url);
-            request.setConfig(requestConfigWithTimeout(TIMEOUT));
-            // add request header
-            request.addHeader("Authorization", "Bearer " + apiKey);
-            request.addHeader("Content-Type", "application/json");
-
-            request.setEntity(new StringEntity(ob.toString()));
-            HttpResponse serviceResponse = client.execute(request);
-
-            log.info("Response Code : " + serviceResponse.getStatusLine().getStatusCode());
-            log.info("URL: " + url);
-            log.info("REQUEST: " + ob);
-
-            result = EntityUtils.toString(serviceResponse.getEntity());
-
-
-        } catch (IOException ex) {
-            JsonObject json = new JsonObject();
-            json.addProperty("error", "-1");
-            return json.toString();
-        }
-//        if (url.contains("GetStatement") || url.contains("GetCustomerAccountQuery")) {
-//            log.info("logging disabled for " + url);
-//        } else {
-//            log.info("RESPONSE " + result);
+//    public String httpPostClients(String url, String apiKey, JsonObject ob) {
+//        long start = System.currentTimeMillis();
+//        String result;
+//        try {
+//            HttpClient client = HttpClientBuilder.create().build();
+//
+//            HttpPost request = new HttpPost(url);
+//            request.setConfig(requestConfigWithTimeout(TIMEOUT));
+//            // add request header
+//            request.addHeader("Authorization", "Bearer " + apiKey);
+//            request.addHeader("Content-Type", "application/json");
+//
+//            request.setEntity(new StringEntity(ob.toString()));
+//            HttpResponse serviceResponse = client.execute(request);
+//
+//            log.info("Response Code : " + serviceResponse.getStatusLine().getStatusCode());
+//            log.info("URL: " + url);
+//            log.info("REQUEST: " + ob);
+//
+//            result = EntityUtils.toString(serviceResponse.getEntity());
+//
+//
+//        } catch (IOException ex) {
+//            JsonObject json = new JsonObject();
+//            json.addProperty("error", "-1");
+//            return json.toString();
 //        }
-        log.info("RESPONSE " + result);
-        log.info("TIME TAKEN " + (System.currentTimeMillis() - start));
-        return result;
-    }
+////        if (url.contains("GetStatement") || url.contains("GetCustomerAccountQuery")) {
+////            log.info("logging disabled for " + url);
+////        } else {
+////            log.info("RESPONSE " + result);
+////        }
+//        log.info("RESPONSE " + result);
+//        log.info("TIME TAKEN " + (System.currentTimeMillis() - start));
+//        return result;
+//    }
 
 //    public String refreshCoreBankingAPI(String url, JsonObject request) {
 //        HttpHeaders headers = new HttpHeaders();
@@ -110,43 +112,43 @@ public class CoreBankClients {
 //        return token;
 //    }
 
-    public String refreshCoreBankingAPI(String url, JsonObject ob) {
-        long start = System.currentTimeMillis();
-        String result;
-        try {
+//    public String refreshCoreBankingAPI(String url, JsonObject ob) {
+//        long start = System.currentTimeMillis();
+//        String result;
+//        try {
+//
+//            HttpClient client = HttpClientBuilder.create().build();
+//            HttpPost request = new HttpPost(url);
+//
+//            // add request header
+//            request.addHeader("Content-Type", "application/json");
+//            request.setConfig(requestConfigWithTimeout(TIMEOUT));
+//            request.setEntity(new StringEntity(ob.toString()));
+//            HttpResponse serviceResponse = client.execute(request);
+//
+//            log.info("Response Code : " + serviceResponse.getStatusLine().getStatusCode());
+//            log.info("URL: " + url);
+//            log.info("REQUEST: " + ob);
+//
+//            result = EntityUtils.toString(serviceResponse.getEntity());
+//
+//        } catch (IOException ex) {
+//            log.error("error ", ex);
+//            JsonObject json = new JsonObject();
+//            json.addProperty("error", "-1");
+//            return json.toString();
+//        }
+//
+//        log.info("RESPONSE " + result);
+//        log.info("TIME TAKEN " + (System.currentTimeMillis() - start));
+//        return result;
+//    }
 
-            HttpClient client = HttpClientBuilder.create().build();
-            HttpPost request = new HttpPost(url);
-
-            // add request header
-            request.addHeader("Content-Type", "application/json");
-            request.setConfig(requestConfigWithTimeout(TIMEOUT));
-            request.setEntity(new StringEntity(ob.toString()));
-            HttpResponse serviceResponse = client.execute(request);
-
-            log.info("Response Code : " + serviceResponse.getStatusLine().getStatusCode());
-            log.info("URL: " + url);
-            log.info("REQUEST: " + ob);
-
-            result = EntityUtils.toString(serviceResponse.getEntity());
-
-        } catch (IOException ex) {
-            log.error("error ", ex);
-            JsonObject json = new JsonObject();
-            json.addProperty("error", "-1");
-            return json.toString();
-        }
-
-        log.info("RESPONSE " + result);
-        log.info("TIME TAKEN " + (System.currentTimeMillis() - start));
-        return result;
-    }
-
-    public void sendSMS(String destinationMobile, String message, String mobileNumber) {
+    public void sendSMS(String destinationMobile, String message, String mobileNumber, Long senderUserId) {
         long start = System.currentTimeMillis();
         String userId = "93158098";
         String apiKey = "c53dYmXp7a8E75z2";
-        String sender = "FCMB Beta";
+        String sender = "FCMBBeta";
 
         String result = "";
         try {
@@ -161,15 +163,24 @@ public class CoreBankClients {
         String queryUrl = smsGatewayUrl + "/api1.php?userid=" + userId + "&password=" + apiKey + "&type=5&destination=" + destinationMobile + "&sender=" + sender + "&message=" + message + "";
         try {
 
-            //if (proxyServer.isPresent()) {
-            String[] p = smsGatewayProxy == null ? "127.0.0.1:80".split("\\:") : smsGatewayProxy.split("\\:");
+            RequestConfig config = null;
+            //if (proxyServer.isPresent())
+            if(StringUtils.isNotBlank(smsGatewayProxy)){
+
+                String[] p = smsGatewayProxy == null ? "127.0.0.1:80".split("\\:") : smsGatewayProxy.split("\\:");
 
 
-            HttpHost proxy = new HttpHost(p[0], Integer.parseInt(p[1]));
-            RequestConfig config = RequestConfig.custom()
-                    .setProxy(proxy)
-                    .build();
-            //}
+                HttpHost proxy = new HttpHost(p[0], Integer.parseInt(p[1]));
+                config = RequestConfig.custom()
+                        .setProxy(proxy)
+                        .build();
+
+                log.info("Proxy Server, " + p[0] + " : " + p[1]);
+
+            }else{
+                config = RequestConfig.custom()
+                        .build();
+            }
 
             log.info("REQUEST: " + queryUrl);
 
@@ -182,7 +193,6 @@ public class CoreBankClients {
 
             log.info("RESPONSE CODE : " + serviceResponse.getStatusLine().getStatusCode());
 
-            log.info("Proxy Server, " + p[0] + " : " + p[1]);
 
             result = EntityUtils.toString(serviceResponse.getEntity());
 
@@ -197,7 +207,7 @@ public class CoreBankClients {
 
         try {
             ExecutorService executorService = Executors.newCachedThreadPool();
-            executorService.execute(new LogSMS(smsLogRepository, mobileNumber, destinationMobile, message, result));
+            executorService.execute(new LogSMS(smsLogRepository, mobileNumber, destinationMobile, message, result, senderUserId));
             executorService.shutdown();
         } catch (Exception e) {
             log.error("Executor Service Error ", e);

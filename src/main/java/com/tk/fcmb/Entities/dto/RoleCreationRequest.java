@@ -16,8 +16,6 @@ public class RoleCreationRequest {
 
     private String roleName;
 
-    private String staffId;
-
     private List<UserPermissions> roleFunctions;
 
 }

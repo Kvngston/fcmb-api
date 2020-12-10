@@ -1,30 +1,44 @@
 package com.tk.fcmb.Controllers;
 
-import com.tk.fcmb.Entities.OTP;
 import com.tk.fcmb.Entities.Role;
+import com.tk.fcmb.Entities.TokenBlackList;
 import com.tk.fcmb.Entities.User;
 import com.tk.fcmb.Entities.dto.*;
 import com.tk.fcmb.Enums.AccountStatus;
+import com.tk.fcmb.Enums.LoginFlag;
 import com.tk.fcmb.Enums.RoleType;
 import com.tk.fcmb.Job.IpAddressGetter;
+import com.tk.fcmb.Repositories.TokenBlackListRepository;
 import com.tk.fcmb.Repositories.UserRepository;
 import com.tk.fcmb.Service.AuditTrailService;
 import com.tk.fcmb.Service.CustomUserDetailsService;
 import com.tk.fcmb.Service.OtpService;
 import com.tk.fcmb.Service.UserService;
+import com.tk.fcmb.utils.GetAuthenticatedUser;
 import com.tk.fcmb.utils.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.util.StringUtils;
+import org.springframework.validation.Validator;
 import org.springframework.web.bind.annotation.*;
 
 import javax.mail.MessagingException;
 import javax.servlet.http.HttpServletRequest;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+import static org.springframework.util.StringUtils.isEmpty;
 
 @RestController
 @RequestMapping("/user/")
@@ -54,128 +68,308 @@ public class UserController {
     @Autowired
     private IpAddressGetter ipAddressGetter;
 
+    @Autowired
+    private TokenBlackListRepository tokenBlackListRepository;
 
-    @PostMapping("/createSuperAdmin")
+
+    @Autowired
+    private GetAuthenticatedUser AuthenticatedUser;
+
+    private String emailRegex = "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,6}";
+
+    @PostMapping("/createUser")
     @PreAuthorize("permitAll()")
-    public ResponseEntity<?> createSuperAdmin(@RequestBody UserCreationRequest userCreationRequest, HttpServletRequest request) throws Exception {
+    public ResponseEntity<?> createUser(@RequestBody UserCreationRequest userCreationRequest, HttpServletRequest request) throws Exception {
 
-        System.out.println(userCreationRequest.getBankBranchDto());
-        ResponseEntity<?> user =  userService.addSuperAdmin(userCreationRequest.getUserDto(), userCreationRequest.getBankBranchDto());
+        User user = AuthenticatedUser.getAuthenticatedUser(request);
 
-        if (user.getStatusCode() == HttpStatus.CREATED){
-            AuditTrailDto auditTrailDto = new AuditTrailDto();
-            auditTrailDto.setTitle("Super Admin creation");
-            auditTrailDto.setTransactionDetails("Created a Super Admin");
-            auditTrailDto.setIpAddress(ipAddressGetter.getClientIpAddress(request));
-            auditTrailDto.setStaffId(userCreationRequest.getUserDto().getStaffId());
-            auditTrailService.createNewEvent(auditTrailDto);
-        }
-
-
-        return new ResponseEntity<>("User created Successfully", HttpStatus.CREATED);
-    }
-
-
-    @PostMapping("/createAdmin")
-    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN,IT_CONTROL')")
-    public ResponseEntity<?> createAdmin(@RequestBody UserCreationRequest userCreationRequest, HttpServletRequest request) throws Exception{
-        ResponseEntity<?> user =  userService.addAdmin(userCreationRequest.getUserDto(), userCreationRequest.getBankBranchDto());
-
-        if (user.getStatusCode() == HttpStatus.CREATED) {
-            AuditTrailDto auditTrailDto = new AuditTrailDto();
-            auditTrailDto.setTitle("Admin creation");
-            auditTrailDto.setTransactionDetails("Created an Admin");
-            auditTrailDto.setIpAddress(ipAddressGetter.getClientIpAddress(request));
-            auditTrailDto.setStaffId(userCreationRequest.getUserDto().getStaffId());
-            auditTrailService.createNewEvent(auditTrailDto);
-        }
-        return user;
-    }
-
-    @PostMapping("/createRegularUser")
-    @PreAuthorize("hasAuthority('create_user')")
-    public ResponseEntity<?> createRegularUser(@RequestBody UserDto userDto, @RequestBody BankBranchDto bankBranchDto, HttpServletRequest request) throws Exception{
-        ResponseEntity<?> user =  userService.addUser(userDto, bankBranchDto);
-
-
-        if (user.getStatusCode() == HttpStatus.CREATED) {
-            AuditTrailDto auditTrailDto = new AuditTrailDto();
-            auditTrailDto.setTitle("User creation");
-            auditTrailDto.setTransactionDetails("Created a User");
-            auditTrailDto.setIpAddress(ipAddressGetter.getClientIpAddress(request));
-            auditTrailDto.setStaffId(userDto.getStaffId());
-            auditTrailService.createNewEvent(auditTrailDto);
-        }
-        return user;
-    }
-
-    @PostMapping("/approveCreatedUser")
-    @PreAuthorize("hasAuthority('approve_functions')")
-    public ResponseEntity<?> approveCreatedUser(@RequestParam("username") String username, @RequestParam("staffId") String staffId,  HttpServletRequest request){
-
-        User user = userRepository.findByStaffId(staffId);
+        Response response = new Response();
         if (user == null) {
-            return new ResponseEntity<>("User with staff id "+ staffId+ "was not found", HttpStatus.BAD_REQUEST);
+            response.setResponseCode(400);
+            response.setResponseMessage("User was not found");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
         }
 
-        ResponseEntity<?> response = userService.approveUserCreation(username);
-
-        if (response.getStatusCode() == HttpStatus.OK) {
+        ResponseEntity<?> userResponseEntity =  userService.addUser(userCreationRequest.getUserDto(), userCreationRequest.getBankBranchDto());
+        if (userResponseEntity.getStatusCode() == HttpStatus.CREATED){
             AuditTrailDto auditTrailDto = new AuditTrailDto();
-            auditTrailDto.setTitle("Approve User Created");
-            auditTrailDto.setTransactionDetails("verified a Created User");
+            auditTrailDto.setTitle(userCreationRequest.getUserDto().getRoleName() + " Creation");
+            auditTrailDto.setTransactionDetails("Created a User - "+ userCreationRequest.getUserDto().getEmail());
             auditTrailDto.setIpAddress(ipAddressGetter.getClientIpAddress(request));
             auditTrailDto.setStaffId(user.getStaffId());
             auditTrailService.createNewEvent(auditTrailDto);
+
+
+
+            response.setResponseCode(200);
+            response.setResponseMessage("Successful");
+            response.setResponseData("User created Successfully");
+
+            return new ResponseEntity<>(response, HttpStatus.OK);
         }
-        return response;
+
+        return userResponseEntity;
 
     }
 
-
-    @PostMapping("/reGenerateOtp")
+    @PostMapping("/updateUserProfile")
     @PreAuthorize("permitAll()")
-    public ResponseEntity<OTP> reGenerateOtpForUser(@RequestParam(name = "id") long userId, @RequestParam("otpSendMode") String otpSendMode, HttpServletRequest request) throws Exception {
-        ResponseEntity<OTP> otp =  otpService.reGenerateOtp(userId,otpSendMode);
-
-        User staff = userRepository.findById(userId).orElse(null);
-
-        if (staff == null){
-            throw new Exception("Staff not found, check user id");
+    public ResponseEntity<?> updateUserDetails(@RequestBody UserUpdateRequest userUpdateRequest, HttpServletRequest request){
+        User user = AuthenticatedUser.getAuthenticatedUser(request);
+        Response response = new Response();
+        if (user == null) {
+            response.setResponseCode(400);
+            response.setResponseMessage("User was not found");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
         }
 
-        if (otp.getStatusCode() == HttpStatus.CREATED) {
+        ResponseEntity<?> responseEntity = userService.updateUserDetails(userUpdateRequest,user);
+
+        if (responseEntity.getStatusCode() == HttpStatus.OK) {
             AuditTrailDto auditTrailDto = new AuditTrailDto();
-            auditTrailDto.setTitle("OTP ReGeneration");
-            auditTrailDto.setTransactionDetails("Regenerated an OTP");
+            auditTrailDto.setTitle("Update User Details");
+            auditTrailDto.setTransactionDetails("Updated a User's Profile");
             auditTrailDto.setIpAddress(ipAddressGetter.getClientIpAddress(request));
-            auditTrailDto.setStaffId(staff.getStaffId());
+            auditTrailDto.setStaffId(user.getStaffId());
             auditTrailService.createNewEvent(auditTrailDto);
+
+
+            response.setResponseCode(200);
+            response.setResponseMessage("Successful");
+            response.setResponseData("User Updated Successfully");
+
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        }
+        return responseEntity;
+    }
+
+//    @PostMapping("/updateUserContact")
+//    @PreAuthorize("permitAll()")
+//    public ResponseEntity<?> updateUserContactInfo(@RequestBody UserContactUpdateRequest userContactUpdateRequest, HttpServletRequest request){
+//        User user = AuthenticatedUser.getAuthenticatedUser(request);
+//        Response response = new Response();
+//        if (user == null) {
+//            response.setResponseCode(400);
+//            response.setResponseMessage("User was not found");
+//            response.setResponseData("");
+//            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+//        }
+//
+//        ResponseEntity<?> responseEntity = userService.updateContactInfo(userContactUpdateRequest,user.getEmail());
+//
+//        if (responseEntity.getStatusCode() == HttpStatus.OK) {
+//            AuditTrailDto auditTrailDto = new AuditTrailDto();
+//            auditTrailDto.setTitle("Update User Details");
+//            auditTrailDto.setTransactionDetails("Updated a User's Contact Info");
+//            auditTrailDto.setIpAddress(ipAddressGetter.getClientIpAddress(request));
+//            auditTrailDto.setStaffId(user.getStaffId());
+//            auditTrailService.createNewEvent(auditTrailDto);
+//
+//
+//            response.setResponseCode(200);
+//            response.setResponseMessage("Successful");
+//            response.setResponseData("User Contact Updated Successfully");
+//
+//            return new ResponseEntity<>(response, HttpStatus.OK);
+//        }
+//        return responseEntity;
+//    }
+
+    @PostMapping("/approveCreatedUser")
+    @PreAuthorize("hasAuthority('approve_functions')")
+    public ResponseEntity<?> approveCreatedUser(@RequestParam("userEmail") String email,  HttpServletRequest request){
+
+        Response response = new Response();
+        if (StringUtils.isEmpty(email)){
+            response.setResponseCode(400);
+            response.setResponseMessage("Email Cannot be Null");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
         }
 
-        return otp;
+        if (!Pattern.matches(emailRegex, email)){
+            response.setResponseData(400);
+            response.setResponseMessage("Invalid Email address");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        User user = AuthenticatedUser.getAuthenticatedUser(request);
+        if (user == null) {
+            response.setResponseCode(400);
+            response.setResponseMessage("User was not found");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        ResponseEntity<?> responseEntity = userService.approveUserCreation(email);
+
+        if (responseEntity.getStatusCode() == HttpStatus.OK) {
+            AuditTrailDto auditTrailDto = new AuditTrailDto();
+            auditTrailDto.setTitle("SUCCESS - Approve User Created");
+            auditTrailDto.setTransactionDetails("verified a Created User - " +user.getEmail());
+            auditTrailDto.setIpAddress(ipAddressGetter.getClientIpAddress(request));
+            auditTrailDto.setStaffId(user.getStaffId());
+            auditTrailService.createNewEvent(auditTrailDto);
+
+            response.setResponseCode(200);
+            response.setResponseMessage("Successful");
+            response.setResponseData("User Approved Successfully");
+
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        }
+
+        return responseEntity;
+    }
+
+    @PostMapping("/declineCreatedUser")
+    @PreAuthorize("hasAuthority('approve_functions')")
+    public ResponseEntity<?> declineCreatedUser(@RequestParam("userEmail") String email,  HttpServletRequest request){
+
+        Response response = new Response();
+        if (StringUtils.isEmpty(email)){
+            response.setResponseCode(400);
+            response.setResponseMessage("Email Cannot be Null");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        if (!Pattern.matches(emailRegex, email)){
+            response.setResponseData(400);
+            response.setResponseMessage("Invalid Email address");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        User user = AuthenticatedUser.getAuthenticatedUser(request);
+        if (user == null) {
+            response.setResponseCode(400);
+            response.setResponseMessage("User was not found");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        ResponseEntity<?> responseEntity = userService.approveUserCreation(email);
+
+        if (responseEntity.getStatusCode() == HttpStatus.OK) {
+            AuditTrailDto auditTrailDto = new AuditTrailDto();
+            auditTrailDto.setTitle("FAILED - Approve User Created");
+            auditTrailDto.setTransactionDetails("Declined a Created User - " +user.getEmail());
+            auditTrailDto.setIpAddress(ipAddressGetter.getClientIpAddress(request));
+            auditTrailDto.setStaffId(user.getStaffId());
+            auditTrailService.createNewEvent(auditTrailDto);
+
+            response.setResponseCode(200);
+            response.setResponseMessage("Successful");
+            response.setResponseData("User Declined Successfully");
+
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        }
+
+        return responseEntity;
+    }
+
+    @PostMapping("/reSendOtp")
+    @PreAuthorize("permitAll()")
+    public ResponseEntity<?> resendOtp(@RequestParam("email") String email, @RequestParam("otpMode") String otpMode, HttpServletRequest request) throws Exception {
+
+        Response response = new Response();
+        if (StringUtils.isEmpty(email)){
+            response.setResponseCode(400);
+            response.setResponseMessage("Email Cannot be Null");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        if (!Pattern.matches(emailRegex, email)){
+            response.setResponseData(400);
+            response.setResponseMessage("Invalid Email address");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        if (StringUtils.isEmpty(otpMode)){
+            response.setResponseCode(400);
+            response.setResponseMessage("Otp Mode cannot be Null");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        User user = userRepository.findByEmail(email);
+        if (user == null) {
+            response.setResponseCode(400);
+            response.setResponseMessage("User was not found");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+        user.setLoginFlag(LoginFlag.VERIFY_OTP_FLAG);
+
+
+        if (otpMode.toLowerCase().equals("email".toLowerCase())){
+            otpService.generateOtp(user.getEmail(), "email");
+        }else if (otpMode.toLowerCase().equals("sms".toLowerCase())){
+            otpService.generateOtp(user.getEmail(), "sms");
+        }else {
+            response.setResponseCode(400);
+            response.setResponseMessage("Invalid OtpMode, OtpMode must be between email and sms");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+
+        AuditTrailDto auditTrailDto = new AuditTrailDto();
+        auditTrailDto.setTitle("OTP ReGeneration");
+        auditTrailDto.setTransactionDetails("Regenerated an OTP");
+        auditTrailDto.setIpAddress(ipAddressGetter.getClientIpAddress(request));
+        auditTrailDto.setStaffId(user.getStaffId());
+        auditTrailService.createNewEvent(auditTrailDto);
+
+        userRepository.save(user);
+
+        response.setResponseCode(200);
+        response.setResponseMessage("Successful");
+        response.setResponseData("Otp Resent Successfully, Confirm Otp");
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
     @PostMapping("/resetPassword")
-    @PreAuthorize("hasAuthority('create_user')")
-    public ResponseEntity<?> resetPassword(@RequestParam(name = "userId") long userId, @RequestParam(name = "initiatorsEmail") String initiatorsEmail, HttpServletRequest request) throws Exception {
+    @PreAuthorize("hasAuthority('reset_password')")
+    public ResponseEntity<?> resetPassword(@RequestParam(name = "userEmail") String userEmail, HttpServletRequest request) throws Exception {
 
-        ResponseEntity<?> temporaryPasswordResponseEntity = userService.resetPassword(userId, initiatorsEmail);
+        User user = AuthenticatedUser.getAuthenticatedUser(request);
+        Response response = new Response();
 
-        User staff = userRepository.findById(userId).orElse(null);
-
-        if (staff == null){
-            throw new Exception("Staff not found, check user id");
+        if (!Pattern.matches(emailRegex, userEmail)){
+            response.setResponseData(400);
+            response.setResponseMessage("Invalid Email address");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
         }
 
+        if (user == null) {
+            response.setResponseData(400);
+            response.setResponseMessage("User was not found");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        ResponseEntity<?> temporaryPasswordResponseEntity = userService.resetPassword(user, userEmail);
 
         if (temporaryPasswordResponseEntity.getStatusCode() == HttpStatus.OK){
             AuditTrailDto auditTrailDto = new AuditTrailDto();
             auditTrailDto.setTitle("Password Reset");
             auditTrailDto.setTransactionDetails("Resetting Password");
             auditTrailDto.setIpAddress(ipAddressGetter.getClientIpAddress(request));
-            auditTrailDto.setStaffId(staff.getStaffId());
+            auditTrailDto.setStaffId(user.getStaffId());
             auditTrailService.createNewEvent(auditTrailDto);
+
+            response.setResponseData(200);
+            response.setResponseMessage("Successful");
+            response.setResponseData("Password has been reset");
+            return new ResponseEntity<>(response, HttpStatus.OK);
+
         }
 
         return temporaryPasswordResponseEntity;
@@ -184,25 +378,61 @@ public class UserController {
     @PostMapping("/changePassword")
     @PreAuthorize("permitAll()")
     public ResponseEntity<?> changePassword(@RequestParam(name = "newPassword") String newPassword,
-                                                 @RequestParam(name = "generatedPassword") String generatedPassword,
-                                                 @RequestParam(name = "userId") long userId,
-                                                 @RequestParam(name = "initiatorsEmail") String initiatorsEmail,
+                                                 @RequestParam(name = "oldPassword") String oldPassword,
+                                                 @RequestParam(name = "email") String email,
                                             HttpServletRequest request) throws Exception {
 
-        ResponseEntity<?> changePassword = userService.changePassword(newPassword, generatedPassword, userId, initiatorsEmail);
 
-        User staff = userRepository.findById(userId).orElse(null);
+        Response response = new Response();
 
-        if (staff == null){
-            throw new Exception("Staff not found, check user id");
+        User user = userRepository.findByEmail(email);
+
+        if (user == null) {
+            response.setResponseData(400);
+            response.setResponseMessage("User was not found");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
         }
 
-        if (changePassword.getStatusCode() == HttpStatus.ACCEPTED){
+
+        if (StringUtils.isEmpty(newPassword)){
+            response.setResponseData(400);
+            response.setResponseMessage("New Password Cannot be null");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+        if (StringUtils.isEmpty(oldPassword)){
+            response.setResponseData(400);
+            response.setResponseMessage("Old Password Cannot be null");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        if (StringUtils.isEmpty(email)){
+            response.setResponseData(400);
+            response.setResponseMessage("Email Cannot be null");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+
+        if (!Pattern.matches(emailRegex, email)){
+            response.setResponseData(400);
+            response.setResponseMessage("Invalid Email address");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        ResponseEntity<?> changePassword = userService.changePassword(oldPassword, newPassword, user);
+
+
+
+        if (changePassword.getStatusCode() == HttpStatus.OK){
             AuditTrailDto auditTrailDto = new AuditTrailDto();
             auditTrailDto.setTitle("Password Changed");
             auditTrailDto.setTransactionDetails("Password has been  Changed");
             auditTrailDto.setIpAddress(ipAddressGetter.getClientIpAddress(request));
-            auditTrailDto.setStaffId(staff.getStaffId());
+            auditTrailDto.setStaffId(user.getStaffId());
             auditTrailService.createNewEvent(auditTrailDto);
         }
 
@@ -211,9 +441,56 @@ public class UserController {
 
 
 
+    @PostMapping("/forgetPassword")
+    @PreAuthorize("permitAll()")
+    public ResponseEntity<?> changePassword(@RequestParam(name = "email") String email, HttpServletRequest request) throws MessagingException {
+        Response response = new Response();
+
+        if (StringUtils.isEmpty(email)){
+            response.setResponseData(400);
+            response.setResponseMessage("Email Cannot be null");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
 
 
-    public AuthenticationResponse createAuthenticationToken(UserDetails userDetails) throws Exception{
+        if (!Pattern.matches(emailRegex, email)){
+            response.setResponseData(400);
+            response.setResponseMessage("Invalid Email address");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        User user = userRepository.findByEmail(email);
+
+        if (user == null) {
+            response.setResponseData(400);
+            response.setResponseMessage("User was not found");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        ResponseEntity<?> responseEntity = userService.forgetPassword(user);
+
+        if (responseEntity.getStatusCode() == HttpStatus.OK){
+            AuditTrailDto auditTrailDto = new AuditTrailDto();
+            auditTrailDto.setTitle("Forgot Password");
+            auditTrailDto.setTransactionDetails("Resetting Password");
+            auditTrailDto.setIpAddress(ipAddressGetter.getClientIpAddress(request));
+            auditTrailDto.setStaffId(user.getStaffId());
+            auditTrailService.createNewEvent(auditTrailDto);
+
+        }
+
+        response.setResponseData(200);
+        response.setResponseMessage("Successful");
+        response.setResponseData("Password has been reset");
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
+
+
+    public AuthenticationResponse createAuthenticationToken(UserDetails userDetails){
 
 
         final String jwt = jwtUtil.generateToken(userDetails);
@@ -222,41 +499,77 @@ public class UserController {
     }
 
 
-//    @GetMapping("/hello")
-//    @PreAuthorize("permitAll()")
-//    public String hello(){
-//        return "Hello world";
-//    }
-//
-//    @GetMapping("/adminHi")
-//    @PreAuthorize("hasAuthority('SUPER_ADMIN')")
-//    public String hi(){
-//        return "Admin Hi there";
-//    }
-
 
     @PostMapping("/login")
     @PreAuthorize("permitAll()")
-    public ResponseEntity<?> getLoginDetails(@RequestBody AuthenticationRequest authenticationRequest, HttpServletRequest request) throws Exception {
-        User user = userRepository.findByUsername(authenticationRequest.getUsername()).orElse(null);
+    public ResponseEntity<?> getLoginDetails(@RequestBody AuthenticationRequest authenticationRequest, HttpServletRequest request){
+        Response response = new Response();
+
+
+        if(StringUtils.isEmpty(authenticationRequest.getEmail())){
+            response.setResponseCode(400);
+            response.setResponseMessage("Email Cannot be null");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        if(StringUtils.isEmpty(authenticationRequest.getPassword())){
+            response.setResponseCode(400);
+            response.setResponseMessage("Password Cannot be null");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+
+        if (!Pattern.matches(emailRegex, authenticationRequest.getEmail())){
+            response.setResponseCode(400);
+            response.setResponseMessage("Invalid Email address");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        User user = userRepository.findByEmail(authenticationRequest.getEmail());
 
         if (user == null){
-            return new ResponseEntity<>("user with username " + authenticationRequest.getUsername() + " doesn't exist", HttpStatus.BAD_REQUEST);
+            response.setResponseCode(400);
+            response.setResponseMessage("user with email " + authenticationRequest.getEmail() + " doesn't exist");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        if (user.isOverrideLoginFlow()){
+            final UserDetails userDetails = userDetailsService.loadUserByUsername(user.getEmail());
+            LoginResponse loginResponse = new LoginResponse();
+            loginResponse.setAuthenticationResponse(createAuthenticationToken(userDetails));
+            loginResponse.setFirstName(user.getFirstName());
+            loginResponse.setLastName(user.getLastName());
+            loginResponse.setRole(user.getRole().getRoleName());
+
+            response.setResponseCode(200);
+            response.setResponseMessage("Successful");
+            response.setResponseData(loginResponse);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        }
+
+        if (!user.isLoginCleared()){
+            response.setResponseCode(400);
+            response.setResponseMessage("User account is not cleared for login, Please change your password");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
         }
 
         if (user.getAccountStatus() == AccountStatus.ACCOUNT_LOCKED){
-            return new ResponseEntity<>("User account has been locked or not verified", HttpStatus.BAD_REQUEST);
+            response.setResponseCode(400);
+            response.setResponseMessage("User account has been locked or not verified");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
         }
 
-        if (authenticationRequest.getOtpMode().isEmpty()){
-            return new ResponseEntity<>("Otp mode has to be between email and sms", HttpStatus.BAD_REQUEST);
-        }
-
-        if (passwordEncoder.matches(authenticationRequest.getPassword(), user.getPassword())){
-            System.out.println(user);
-            otpService.generateOtp(user.getId(), authenticationRequest.getOtpMode().toLowerCase());
-        }else {
-            return new ResponseEntity<>("Password mismatch", HttpStatus.BAD_REQUEST);
+        if (!passwordEncoder.matches(authenticationRequest.getPassword(), user.getPassword())){
+            response.setResponseCode(400);
+            response.setResponseMessage("Password mismatch");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
         }
 
         AuditTrailDto auditTrailDto = new AuditTrailDto();
@@ -266,27 +579,189 @@ public class UserController {
         auditTrailDto.setStaffId(user.getStaffId());
         auditTrailService.createNewEvent(auditTrailDto);
 
+        user.setLoginFlag(LoginFlag.CONFIRM_OTP_FLAG);
+        userRepository.save(user);
 
-        //get ip address and save it in the audit
+        LoggedInUserDetailsDto detailsDto = new LoggedInUserDetailsDto();
 
+        detailsDto.setAccountLock(user.isAccountLock());
+        detailsDto.setAccountStatus(user.getAccountStatus());
+        detailsDto.setApproved(user.isApproved());
+        detailsDto.setLoginCleared(user.isLoginCleared());
+        detailsDto.setLoginFlag(user.getLoginFlag());
+        detailsDto.setOverrideLoginFlow(user.isOverrideLoginFlow());
+        detailsDto.setResponse("Login details accepted, Confirm Otp mode");
 
-        return ResponseEntity.ok("Otp has been sent to the required medium");
+        response.setResponseCode(200);
+        response.setResponseMessage("Successful");
+        response.setResponseData(detailsDto);
+        return ResponseEntity.ok(response);
     }
 
+    @PostMapping("/logout")
+    @PreAuthorize("permitAll()")
+    public ResponseEntity<?> logout(HttpServletRequest request){
+
+        Response response = new Response();
+        User user = AuthenticatedUser.getAuthenticatedUser(request);
+        if (user == null) {
+            response.setResponseCode(400);
+            response.setResponseMessage("User was not found");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        String token = AuthenticatedUser.getUserToken(request);
+
+        UserDetails userDetails = userDetailsService.loadUserByUsername(user.getEmail());
+
+
+        if (jwtUtil.validateToken(token,userDetails)){
+            TokenBlackList tokenBlackList = new TokenBlackList();
+            tokenBlackList.setToken(token);
+            tokenBlackListRepository.save(tokenBlackList);
+        }else {
+            response.setResponseCode(400);
+            response.setResponseMessage("Invalid Token");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        AuditTrailDto auditTrailDto = new AuditTrailDto();
+        auditTrailDto.setTitle("Logout");
+        auditTrailDto.setTransactionDetails("User Logout");
+        auditTrailDto.setIpAddress(ipAddressGetter.getClientIpAddress(request));
+        auditTrailDto.setStaffId(user.getStaffId());
+        auditTrailService.createNewEvent(auditTrailDto);
+
+        user.setLoginFlag(LoginFlag.DETAILS_FLAG);
+        user.setOverrideLoginFlow(false);
+        userRepository.save(user);
+
+        response.setResponseCode(200);
+        response.setResponseMessage("Successful");
+        response.setResponseData("Successfully logged out");
+
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
+    @PostMapping("/confirmOtpMode")
+    @PreAuthorize("permitAll()")
+    public ResponseEntity<?> confirmOtpMode(@RequestParam("otpMode") String otpMode, @RequestParam("email") String email, HttpServletRequest request) throws Exception {
+
+        Response response = new Response();
+
+        if (StringUtils.isEmpty(email)){
+            response.setResponseCode(400);
+            response.setResponseMessage("Email cannot be null");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+        if (StringUtils.isEmpty(otpMode)){
+            response.setResponseCode(400);
+            response.setResponseMessage("Otp mode cannot be null");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        if (!Pattern.matches(emailRegex, email)){
+            response.setResponseData(400);
+            response.setResponseMessage("Invalid Email address");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+        User user = userRepository.findByEmail(email);
+
+        if (user == null){
+            response.setResponseCode(400);
+            response.setResponseMessage("User not found");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        if (user.getLoginFlag() != LoginFlag.CONFIRM_OTP_FLAG && user.getLoginFlag() != LoginFlag.VERIFY_OTP_FLAG){
+            response.setResponseCode(400);
+            response.setResponseMessage("User not at required stage to confirm otp mode");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        AuditTrailDto auditTrailDto = new AuditTrailDto();
+        auditTrailDto.setTitle("Confirm otp Mode");
+        auditTrailDto.setTransactionDetails("User Confirmed Otp Mode");
+        auditTrailDto.setIpAddress(ipAddressGetter.getClientIpAddress(request));
+        auditTrailDto.setStaffId(user.getStaffId());
+        auditTrailService.createNewEvent(auditTrailDto);
+
+        if (otpMode.toLowerCase().equals("email".toLowerCase())){
+
+            otpService.generateOtp(user.getEmail(), "email");
+            response.setResponseCode(200);
+            response.setResponseMessage("Otp has been sent");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        }else if (otpMode.toLowerCase().equals("sms".toLowerCase())){
+            otpService.generateOtp(user.getEmail(), "sms");
+            response.setResponseCode(200);
+            response.setResponseMessage("Otp has been sent");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        }else {
+            response.setResponseCode(400);
+            response.setResponseMessage("Invalid OtpMode, OtpMode must be between email and sms");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+
+    }
 
     @PostMapping("/verifyOtp")
     @PreAuthorize("permitAll()")
-    public ResponseEntity<?> login(@RequestParam(name = "username") String username, @RequestParam(name = "otp") String otp, HttpServletRequest request) throws Exception {
+    public ResponseEntity<?> login(@RequestParam(name = "email") String email, @RequestParam(name = "otp") String otp, HttpServletRequest request){
         //change the request to accept otp as a field and the user id
 
-        User user = userRepository.findByUsername(username).orElse(null);
+        Response response = new Response();
+
+        if (StringUtils.isEmpty(email)){
+            response.setResponseCode(400);
+            response.setResponseMessage("Email cannot be null");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        if (StringUtils.isEmpty(otp)){
+            response.setResponseCode(400);
+            response.setResponseMessage("Otp cannot be null");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        if (!Pattern.matches(emailRegex, email)){
+            response.setResponseData(400);
+            response.setResponseMessage("Invalid Email address");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        User user = userRepository.findByEmail(email);
 
         if (user == null) {
-            throw new Exception("User not found");
+            response.setResponseCode(400);
+            response.setResponseMessage("User not found");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        if (user.getLoginFlag() != LoginFlag.VERIFY_OTP_FLAG){
+            response.setResponseCode(400);
+            response.setResponseMessage("User not at required stage to verify otp");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
         }
 
         if (Objects.equals(otpService.verifyOtp(user.getId(), otp).getBody(), true)){
-            final UserDetails userDetails = userDetailsService.loadUserByUsername(user.getUsername());
+            final UserDetails userDetails = userDetailsService.loadUserByUsername(user.getEmail());
 
             AuditTrailDto auditTrailDto = new AuditTrailDto();
             auditTrailDto.setTitle("Otp verification");
@@ -295,85 +770,144 @@ public class UserController {
             auditTrailDto.setStaffId(user.getStaffId());
             auditTrailService.createNewEvent(auditTrailDto);
 
-            return new ResponseEntity<>(createAuthenticationToken(userDetails), HttpStatus.ACCEPTED);
+            LoginResponse loginResponse = new LoginResponse();
+            loginResponse.setAuthenticationResponse(createAuthenticationToken(userDetails));
+            loginResponse.setFirstName(user.getFirstName());
+            loginResponse.setLastName(user.getLastName());
+            loginResponse.setRole(user.getRole().getRoleName());
+
+            user.setLoginFlag(LoginFlag.DETAILS_FLAG);
+            userRepository.save(user);
+
+            response.setResponseCode(200);
+            response.setResponseMessage("Successful");
+            response.setResponseData(loginResponse);
+            return new ResponseEntity<>(response, HttpStatus.OK);
         }else{
-            return new ResponseEntity<>("Otp doesn't match", HttpStatus.NOT_FOUND);
+            response.setResponseCode(400);
+            response.setResponseMessage("Otp doesn't match");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
         }
     }
 
 
     @GetMapping("/getAllUsers")
     @PreAuthorize("permitAll()")
-    public ResponseEntity<?> getAllUsersOnPlatform(@RequestParam(name = "staffId") String staffId, HttpServletRequest request) throws Exception {
+    public ResponseEntity<?> getAllUsersOnPlatform( HttpServletRequest request,@RequestParam(value = "email", defaultValue = "") String email,  @RequestParam("page") int page, @RequestParam("size") int size) {
 
         Role superAdmin = new Role();
         superAdmin.setRoleType(RoleType.SUPER_ADMIN);
 
-        User user = userRepository.findByStaffId(staffId);
-
+        User user = AuthenticatedUser.getAuthenticatedUser(request);
+        Response response = new Response();
         if (user == null) {
-            throw new Exception("Staff not found, check staff id");
+            response.setResponseCode(400);
+            response.setResponseMessage("User was not found");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
         }
 
-        if (userRepository.findByStaffId(staffId).getRole().equals(superAdmin)){
-            ResponseEntity<?> userResponse = userService.getAllUsersOnPlatform();
+        if(!email.equals("")){
+            if (!Pattern.matches(emailRegex, email)){
+                response.setResponseData(400);
+                response.setResponseMessage("Invalid Email address");
+                response.setResponseData("");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+        }
 
-            if (userResponse.getStatusCode() == HttpStatus.FOUND){
+
+        if (userRepository.findByStaffId(user.getStaffId()).getRole().equals(superAdmin)){
+            ResponseEntity<?> userResponse = userService.getAllUsersOnPlatform(email,page, size);
+
+            if (userResponse.getStatusCode() == HttpStatus.OK){
                 AuditTrailDto auditTrailDto = new AuditTrailDto();
                 auditTrailDto.setTitle("Query all users");
                 auditTrailDto.setTransactionDetails("Returning all users on the platform");
                 auditTrailDto.setIpAddress(ipAddressGetter.getClientIpAddress(request));
-                auditTrailDto.setStaffId(staffId);
+                auditTrailDto.setStaffId(user.getStaffId());
                 auditTrailService.createNewEvent(auditTrailDto);
             }
             return userResponse;
         }
 
-        return new ResponseEntity<>(null, HttpStatus.UNAUTHORIZED);
+        response.setResponseCode(400);
+        response.setResponseMessage("User not permitted");
+        response.setResponseData("");
+        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
     }
 
     @GetMapping("/getUsersCount")
     @PreAuthorize("permitAll()")
-    public ResponseEntity<?> getUsersCountOnThePlatform(@RequestParam(name = "staffId") String staffId, HttpServletRequest request) throws Exception {
+    public ResponseEntity<?> getUsersCountOnThePlatform( HttpServletRequest request) {
+
         Role superAdmin = new Role();
         superAdmin.setRoleType(RoleType.SUPER_ADMIN);
 
-        User user = userRepository.findByStaffId(staffId);
+        Response response = new Response();
 
+        User user = AuthenticatedUser.getAuthenticatedUser(request);
         if (user == null) {
-            throw new Exception("Staff not found, check staff id");
+            response.setResponseCode(400);
+            response.setResponseMessage("User was not found");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
         }
 
         if (user.getRole().equals(superAdmin)){
             ResponseEntity<?> userResponse = userService.getUsersCount();
 
-            if (userResponse.getStatusCode() == HttpStatus.FOUND){
+            if (userResponse.getStatusCode() == HttpStatus.OK){
                 AuditTrailDto auditTrailDto = new AuditTrailDto();
                 auditTrailDto.setTitle("Query Users Count");
                 auditTrailDto.setTransactionDetails("Returning the count on users of the platform");
                 auditTrailDto.setIpAddress(ipAddressGetter.getClientIpAddress(request));
-                auditTrailDto.setStaffId(staffId);
+                auditTrailDto.setStaffId(user.getStaffId());
                 auditTrailService.createNewEvent(auditTrailDto);
             }
             return userResponse;
         }
 
-        return new ResponseEntity<>(null, HttpStatus.UNAUTHORIZED);
+        response.setResponseCode(400);
+        response.setResponseMessage("User not permitted");
+        response.setResponseData("");
+        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
     }
 
 
     @GetMapping("/getUsersDetails")
     @PreAuthorize("permitAll()")
-    public ResponseEntity<?> getUserDetails(@RequestParam("username") String username, @RequestParam("staffId") String staffId,  HttpServletRequest request){
+    public ResponseEntity<?> getUserDetails(@RequestParam("email") String username,  HttpServletRequest request){
 
-        User user = userRepository.findByStaffId(staffId);
-        if (user == null) {
-            return new ResponseEntity<>("User with staff id "+ staffId+ "was not found", HttpStatus.BAD_REQUEST);
+
+        Response response = new Response();
+
+        if (StringUtils.isEmpty(username)){
+            response.setResponseCode(400);
+            response.setResponseMessage("Email cannot be null");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
         }
 
-        ResponseEntity<?> response = userService.getUserDetails(username);
+        if (!Pattern.matches(emailRegex, username)){
+            response.setResponseData(400);
+            response.setResponseMessage("Invalid Email address");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
 
-        if (response.getStatusCode() == HttpStatus.OK) {
+        User user = AuthenticatedUser.getAuthenticatedUser(request);
+        if (user == null) {
+            response.setResponseCode(400);
+            response.setResponseMessage("User not found");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        ResponseEntity<?> responseEntity = userService.getUserDetails(username);
+
+        if (responseEntity.getStatusCode() == HttpStatus.OK) {
             AuditTrailDto auditTrailDto = new AuditTrailDto();
             auditTrailDto.setTitle("Returned User details");
             auditTrailDto.setTransactionDetails("Returned user details of a Created User");
@@ -381,21 +915,32 @@ public class UserController {
             auditTrailDto.setStaffId(user.getStaffId());
             auditTrailService.createNewEvent(auditTrailDto);
         }
-        return response;
+        return responseEntity;
     }
 
     //do this later
     @GetMapping("/getUserCountByCategories")
     @PreAuthorize("permitAll()")
-    public ResponseEntity<?> getUserCountByCategory(@RequestParam(name = "staffId") String staffId, @RequestParam(name = "roleType") RoleType roleType, HttpServletRequest request){
+    public ResponseEntity<?> getUserCountByCategory(@RequestParam(name = "roleName") String roleName, HttpServletRequest request){
 
-        User user = userRepository.findByStaffId(staffId);
+        Response response = new Response();
+        User user = AuthenticatedUser.getAuthenticatedUser(request);
         if (user == null) {
-            return new ResponseEntity<>("User with staff id "+ staffId+ "was not found", HttpStatus.BAD_REQUEST);
+            response.setResponseCode(400);
+            response.setResponseMessage("User not found");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
         }
 
-        ResponseEntity<?> response = userService.getUserCountByCategory(roleType);
-        if (response.getStatusCode() == HttpStatus.FOUND) {
+        if (StringUtils.isEmpty(roleName)){
+            response.setResponseCode(400);
+            response.setResponseMessage("Role name cannot be null");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        ResponseEntity<?> responseEntity = userService.getUserCountByCategory(roleName);
+        if (responseEntity.getStatusCode() == HttpStatus.OK) {
             AuditTrailDto auditTrailDto = new AuditTrailDto();
             auditTrailDto.setTitle("Returned User Count by Category");
             auditTrailDto.setTransactionDetails("Returned user count of a Created Users in a category");
@@ -403,9 +948,43 @@ public class UserController {
             auditTrailDto.setStaffId(user.getStaffId());
             auditTrailService.createNewEvent(auditTrailDto);
         }
-        return response;
+        return responseEntity;
     }
 
+    @GetMapping("/getUnApprovedUsers")
+    @PreAuthorize("permitAll()")
+    public ResponseEntity<?> getUnApprovedUsers(@RequestParam("page") int page, @RequestParam("size") int size, HttpServletRequest request){
+        Response response = new Response();
+        User user = AuthenticatedUser.getAuthenticatedUser(request);
+        if (user == null) {
+            response.setResponseCode(400);
+            response.setResponseMessage("User not found");
+            response.setResponseData("");
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        Pageable pageable = PageRequest.of(page,size);
+
+        List<User> users =  userRepository.findAllByApproved(false);
+
+        List<UserDetailsResponse> userDetailsResponses = new ArrayList<>();
+        users.forEach(user1 -> userDetailsResponses.add(new UserDetailsResponse(user1)));
 
 
+        response.setResponseCode(200);
+        response.setResponseMessage("Successful");
+        response.setResponseData(new PageImpl<>(userDetailsResponses, pageable, userDetailsResponses.size()));
+
+
+        AuditTrailDto auditTrailDto = new AuditTrailDto();
+        auditTrailDto.setTitle("Returned UnApproved Users");
+        auditTrailDto.setTransactionDetails("Returned UnApproved users in the platform");
+        auditTrailDto.setIpAddress(ipAddressGetter.getClientIpAddress(request));
+        auditTrailDto.setStaffId(user.getStaffId());
+        auditTrailService.createNewEvent(auditTrailDto);
+
+        return new ResponseEntity<>(response,HttpStatus.OK);
+
+
+    }
 }
